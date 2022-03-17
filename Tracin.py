@@ -5,39 +5,37 @@ import torch.nn.functional as F
 import torch.optim as optim      #  进行了优化操作
 from torch.utils.data import Dataset,DataLoader  # 批量提取数据，并且输出和标签相对应输出
 import numpy as np
-         # 与音频处理相关的库
+import librosa         # 与音频处理相关的库
 from tqdm import tqdm  # 使用进度条，方便显示
-           #  glob 文件名模式匹配，不用遍历整个目录判断每个文件是不是符合。
+          #  glob 文件名模式匹配，不用遍历整个目录判断每个文件是不是符合。
 import os
 import pickle          # pickle是二进制序列化格式;
 import random          # 随机的概念: 在某个范围内取到的每一个值的概率是相同的
 import logging         # 日志文件
 from model import MACNN
+from data_getpy import get_data
 from feture_extractor import FeatureExtractor
+from torch.autograd import grad
+
+from pathlib import Path
 from torch.autograd import Variable
 import time
 from pif.influence_functions_new import pick_gradient,param_vec_dot_product
-from torch.autograd import grad
 from pif.utils import save_json
-from pathlib import Path
-from data_getpy import get_data
+
+from keras.models import load_model
 
 
-"""定义注意力卷积模型"""
 
-"""设定随机种子"""
-# 在使用pytorch框架搭建模型的时候，模型中的参数都是进行初始化的，
-# 且每次初始化的结果不同，这就导致每次的训练模型不一样，要想在程序不变的情况下，
-# 使得每次的输出结果一致，那就要设定随机种子。
+
 def setup_seed(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
     random.seed(seed)
     torch.backends.cudnn.deterministic = True
-
-"""一些训练参数"""
-setup_seed(111111)  # seed( ) 用于指定随机数生成时所用算法开始的整数值
+"""定义注意力卷积模型"""
+setup_seed(222222)  # seed( ) 用于指定随机数生成时所用算法开始的整数值
 attention_head = 4
 attention_hidden = 32
 learning_rate = 0.001  # 学习率设置初值
@@ -51,10 +49,15 @@ toSaveFeatures = True
 WAV_PATH = "D:\SER\IEMOCAP/"  # 声音文件的显示路径
 RATE = 16000
 MODEL_NAME = 'MACNN'    # 使用上面定义的
-MODEL_PATH = '{}_{}_1.pth'.format(MODEL_NAME, FEATURES_TO_USE) # 定义的模型的路径
-
-
-"""预处理，划分训练集和测试集，并提取特征（MFCC）"""
+MODEL_PATH = '{}_{}_222222.pth'.format(MODEL_NAME, FEATURES_TO_USE) # 定义的模型的路径
+dict = {
+    'neutral': torch.Tensor([0]),
+    'happy': torch.Tensor([1]),
+    'sad': torch.Tensor([2]),
+    'angry': torch.Tensor([3]),
+    'boring': torch.Tensor([4]),
+    'fear': torch.Tensor([5]),
+}
 getdata=get_data(featuresExist,featuresFileName,WAV_PATH,RATE,
                 FEATURES_TO_USE,toSaveFeatures,BATCH_SIZE,impro_or_script)
 
@@ -69,7 +72,7 @@ if (featuresExist == True):
     test_z = features['test_z']
 else:
     logging.info("creating meta dict...")
-    train_X, train_y,train_z,  test_X, test_y,test_z = getdata.process_data(WAV_PATH, t=2, train_overlap=1)
+    train_X, train_y,train_z,  test_X, test_y,test_z = getdata.getdata_Tracin(WAV_PATH)
     print(train_X.shape)
 
 
@@ -85,17 +88,13 @@ else:
         with open(featuresFileName, 'wb') as f:
             pickle.dump(features, f)
 
-"""用于将对应的情绪标签转化为张量"""
-dict = {
-    'neutral': torch.Tensor([0]),
-    'happy': torch.Tensor([1]),
-    'sad': torch.Tensor([2]),
-    'angry': torch.Tensor([3]),
-    'boring': torch.Tensor([4]),
-    'fear': torch.Tensor([5]),
-}
 
-# pytorch中用于读取数据集的类
+
+
+
+# model_weight_path="Lenet.pth"
+# assert os.path.exists(model_weight_path), "file {} does not exist.".format(model_weight_path)
+# model.load_state_dict(torch.load(model_weight_path,map_location=device))
 class DataSet(object):
     def __init__(self, X, Y,Z):
         self.X = X
@@ -119,21 +118,20 @@ class DataSet(object):
         return len(self.X)
 
 
-"""训练模型并测试"""
-
-
-
 train_data = DataSet(train_X_features, train_y,train_z)   # 初始化了X和Y的值
 train_loader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True)
 test_data = DataSet(test_X_features, test_y,test_z)  # 初始化了X和Y的值
 test_loader = DataLoader(test_data, batch_size=BATCH_SIZE, shuffle=True)
 model = MACNN(attention_head, attention_hidden)  # 调用模型
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# model_weight_path = "MACNN_mfcc_1.pth"
+# assert os.path.exists(model_weight_path), "file {} does not exist.".format(model_weight_path)
+# model=torch.load(model_weight_path)
 if torch.cuda.is_available():  # 使用GPU
-    model = model.cuda()
+  model = model.cuda()
 loss_function = nn.CrossEntropyLoss()  # 定义交叉熵损失函数
 optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-6) # 更新参数优化
-outdir = Path("result")
+outdir = Path("result_Tracin")
 # 一个epoch的训练过程
 print(device)
   # 一个epoch即对整个训练集进行一次训练
@@ -156,8 +154,8 @@ for i, batch_i in enumerate(tqdm(test_loader)):
     grad_z_test = grad(loss, model.parameters())
     grad_z_test = pick_gradient(grad_z_test, model)
     train_influences={}
-    for j, batch_j in enumerate((train_loader)):
-        inputs_train, labels_train,name_train = batch_j[0].to(device), batch_j[1].to(device) , batch_j[2] # 获取训练集的语音和标签
+    for j, batch_j in enlabels_trainumerate((train_loader)):
+        inputs_train, ,name_train = batch_j[0].to(device), batch_j[1].to(device) , batch_j[2] # 获取训练集的语音和标签
         inputs_train = Variable(torch.unsqueeze(inputs_train, dim=0).float(), requires_grad=False)
         # labels2=labels.clone()
         # labels2[0] = 9
@@ -165,8 +163,8 @@ for i, batch_i in enumerate(tqdm(test_loader)):
 
         outputs_train = model(inputs_train.to(device))  # 正向传播
         labels_train = labels_train.view(1)
-        loss_train = loss_function(outputs_train, labels_train.to(device))  # 计算损失
-        grad_z_train = grad(loss_train, model.parameters())
+        grad_z_train = grad(loss_train, model.parameters())        loss_train = loss_function(outputs_train, labels_train.to(device))  # 计算损失
+
         grad_z_train = pick_gradient(grad_z_train, model)
         score = param_vec_dot_product(grad_z_test, grad_z_train)
         if j not in train_influences:    #加入json文件保存
@@ -177,10 +175,9 @@ for i, batch_i in enumerate(tqdm(test_loader)):
                                   'ifs': train_influences}
     if i == len(test_loader)-1:
 
-        save_json(influence_results, outdir.joinpath(f'did-{i}macnn.json'))
+        save_json(influence_results, outdir.joinpath(f'Tracin-{i}macnn.json'))
 time_end=time.perf_counter()
 print(time_end-time_start)
 
 
-torch.save(model.state_dict(), MODEL_PATH)
-
+torch.save(model, MODEL_PATH)

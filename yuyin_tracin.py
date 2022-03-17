@@ -39,27 +39,28 @@ if (featuresExist == True):
         features = pickle.load(f)
     train_X_features = features['train_X']
     train_y = features['train_y']
-    valid_features_dict = features['val_dict']
+    test_X_features = features['test_X']
+    test_y = features['test_y']
 else:
     logging.info("creating meta dict...")
-    train_X, train_y, val_dict = process_data(WAV_PATH, t=2, train_overlap=1)
+    train_X, train_y, test_X,test_y = process_data(WAV_PATH, t=2, train_overlap=1)
     print(train_X.shape)
-    print(len(val_dict))
-
+    print(test_X.shape)
     print("getting features")
     logging.info('getting features')
     feature_extractor = FeatureExtractor(rate=RATE)
     train_X_features = feature_extractor.get_features(FEATURES_TO_USE, train_X)
-    valid_features_dict = {}
-    for _, i in enumerate(val_dict):
-        X1 = feature_extractor.get_features(FEATURES_TO_USE, val_dict[i]['X'])
-        valid_features_dict[i] = {
-            'X': X1,
-            'y': val_dict[i]['y']
-        }
+    test_X_features = feature_extractor.get_features(FEATURES_TO_USE, test_X)
+
+    # for _, i in enumerate(tqdm(val_dict)):
+    #     X1 = feature_extractor.get_features(FEATURES_TO_USE, val_dict[i]['X'])
+    #     valid_features_dict[i] = {
+    #         'X': X1,
+    #         'y': val_dict[i]['y']
+    #     }
     if (toSaveFeatures == True):
         features = {'train_X': train_X_features, 'train_y': train_y,
-                    'val_dict': valid_features_dict}
+                    'test_X': test_X_features, 'test_y': test_y}
         with open(featuresFileName, 'wb') as f:
             pickle.dump(features, f)
 
@@ -75,8 +76,8 @@ dict = {
 train_data = DataSet(train_X_features, train_y)   # 初始化了X和Y的值
 train_loader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True)
 test_data = DataSet(test_X_features,test_y)
-test_loader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True)
-model = MACNN(attention_head, attention_hidden)  # 调用模型
+test_loader = DataLoader(test_data, batch_size=BATCH_SIZE, shuffle=True)
+# model = MACNN(attention_head, attention_hidden)  # 调用模型
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 transform = transforms.Compose(    #transformer.compose 执行列表里面的操作
@@ -84,64 +85,34 @@ transform = transforms.Compose(    #transformer.compose 执行列表里面的操
      transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])#normalize数据标准化，第一个数据是mean各通道的均值，第二个数据是std各通道的标准差
 #rgb单个通道是0-255，但是imagenet会除以256，或者。totensor（）归一化到0-1之间
 #tottensor之后接normalize是因为先归一化，在按通道减去均值，除以方差。使数据分布均匀，更具泛化能力
-train_set = torchvision.datasets.CIFAR10(root='datasets', train=True,
-                                         download=True, transform=transform)
-# 加载训练集，实际过程需要分批次（batch）训练
-train_loader = torch.utils.data.DataLoader(train_set, batch_size=1,
-                                           shuffle=True, num_workers=0)
-
-# 10000条语音
-test_set = torchvision.datasets.CIFAR10(root='datasets', train=False,
-                                        download=False, transform=transform)
-test_loader = torch.utils.data.DataLoader(test_set, batch_size=1,
-                                          shuffle=False, num_workers=0)
-# classes = ('plane', 'car', 'bird', 'cat',
-#            'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
-
+# train_set = torchvision.datasets.CIFAR10(root='datasets', train=True,
+#                                          download=True, transform=transform)
+# # 加载训练集，实际过程需要分批次（batch）训练
+# train_loader = torch.utils.data.DataLoader(train_set, batch_size=1,
+#                                            shuffle=True, num_workers=0)
+# # 10000条语音
+# test_set = torchvision.datasets.CIFAR10(root='datasets', train=False,
+#                                         download=False, transform=transform)
+# test_loader = torch.utils.data.DataLoader(test_set, batch_size=1,
+#                                           shuffle=False, num_workers=0)
 # 获取测试集中的图像和标签，用于accuracy计算
-test_data_iter = iter(test_loader)
-test_image, test_label = test_data_iter.next()
-#
-# def imshow(img):  # 展示测试集图片和标签
-#     img = img / 2 + 0.5     # unnormalize
-#     npimg = img.numpy()
-#     plt.imshow(np.transpose(npimg, (1, 2, 0)))
-#     plt.show()
-#
-# # print labels
-# print(' '.join('%5s' % classes[test_label[j]] for j in range(4)))
-# # show images
-# imshow(torchvision.utils.make_grid(test_label))
-
-
-
-
-net = LeNet()  # 定义训练的网络模型
+# test_data_iter = iter(test_loader)
+# test_video, test_label = test_data_iter.next()
+# net = LeNet()  # 定义训练的网络模型
+net = MACNN(attention_head, attention_hidden)
 net.to(device)
-
 model_weight_path = "Lenet.pth"
 assert os.path.exists(model_weight_path), "file {} does not exist.".format(model_weight_path)
 net.load_state_dict(torch.load(model_weight_path, map_location=device))
-# weight_params = []
-# for pname, p in net.named_parameters():
-#     if ( 'fc' in pname and 'weight' in pname):  #'conv' or
-#         weight_params += [p]
-
-
 loss_function = nn.CrossEntropyLoss()  # 定义损失函数为交叉熵损失函数
 # 定义优化器（训练参数，学习率）
-optimizer = optim.Adam(net.parameters(), lr=0.001)
-# optimizer = optim.Adam([
-#             {'params': weight_params}],
-#             lr=0.001,
-#             )
-
+optimizer = optim.Adam(net.parameters(), lr=learning_rate, weight_decay=1e-6)
 for epoch in range(10):  # 一个epoch即对整个训练集进行一次训练
-   
     running_loss = 0.0
     time_start = time.perf_counter()
-    for i, batch_i in enumerate(tqdm(test_loader), start=0):  # 遍历训练集，step从0开始计算
-        inputs, labels = batch_i  # 获取训练集的语音和标签
+    for _, batch_i in enumerate(tqdm(test_loader)):  # 遍历训练集，step从0开始计算
+        inputs = batch_i  # 获取训练集的语音和标签
+        labels=train_y
         # labels2=labels.clone()
         # labels2[0] = 9
         # forward + backward + optimize
