@@ -1,103 +1,140 @@
-import torch
+import os
+import json
 import torchvision
-import torch.nn as nn
-from model import LeNet
-import torch.optim as optim
-import torchvision.transforms as transforms
-import matplotlib.pyplot as plt
-import numpy as np
 import time
-import ser
-from pif.influence_functions_new import calc_all_grad
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torchvision import transforms, datasets
+from tqdm import tqdm
+
+from model import resnet34
+
+category = [[0,1,2,8,9],[3,4,5,6,7]]
+
+def main():
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    print("using {} device.".format(device))
+
+    data_transform = {
+        "train": transforms.Compose([transforms.RandomResizedCrop(224),
+                                     transforms.RandomHorizontalFlip(),
+                                     transforms.ToTensor(),
+                                     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])]),
+        "val": transforms.Compose([transforms.Resize(256),
+                                   transforms.CenterCrop(224),
+                                   transforms.ToTensor(),
+                                   transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])}
+
+    train_set = torchvision.datasets.CIFAR10(root='datasets', train=True,
+                                             download=False, transform=data_transform["train"])
+    # 加载训练集，实际过程需要分批次（batch）训练
+    train_loader = torch.utils.data.DataLoader(train_set, batch_size=50,
+                                               shuffle=True, num_workers=0)
+
+    # 10000张测试图片
+    test_set = torchvision.datasets.CIFAR10(root='datasets', train=False,
+                                            download=False, transform=data_transform["val"])
+    val_num = len(test_set)
+    test_loader = torch.utils.data.DataLoader(test_set, batch_size=1,
+                                              shuffle=False, num_workers=0)
+
+    net = resnet34()
+    # load pretrain weights
+    # download url: https://download.pytorch.org/models/resnet34-333f7ec4.pth
+    model_weight_path = "pth_file/resnet34.pth"
+    assert os.path.exists(model_weight_path), "file {} does not exist.".format(model_weight_path)
+    net.load_state_dict(torch.load(model_weight_path, map_location=device))
+    # for param in net.parameters():
+    #     param.requires_grad = False
+
+    # change fc layer structure
+    in_channel = net.fc.in_features
+    net.fc = nn.Linear(in_channel, 10)
+    net.to(device)
+
+    # define loss function
+    loss_function = nn.CrossEntropyLoss()
+
+    # construct an optimizer
+    params = [p for p in net.parameters() if p.requires_grad]
+    optimizer = optim.Adam(params, lr=0.0001)
+
+    epochs = 10
+    best_acc = 0.0
+    save_path = './pth_file2/resNet34_tracin_' #save_path = './resNet34_new.pth'
+    save_path = './pth_file2/resNet34_epoch1.pth'
+    train_steps = len(train_loader)
+    for epoch in range(epochs):
+        # train
+        net.train()
+        time_start = time.perf_counter()
+        running_loss = 0.0
+        train_bar = tqdm(train_loader)
+        for step, data in enumerate(train_bar):
+            images, labels = data
+
+            optimizer.zero_grad()
+            logits = net(images.to(device))
+            loss = loss_function(logits, labels.to(device))
+            loss.backward()
+            optimizer.step()#计算梯度之后更新参数
+
+            # print statistics
+            running_loss += loss.item()#计算平均loss
+
+            # if(step % 10 == 0 and step > 0):
+            #     torch.save(net.state_dict(), save_path + str(step) + '.pth')
+            #     net.eval()
+            #     acc = 0.0
+            #     with torch.no_grad():
+            #         val_bar = tqdm(test_loader)
+            #         for val_data in val_bar:
+            #             val_images, val_labels = val_data
+            #             outputs = net(val_images.to(device))
+            #             # loss = loss_function(outputs, test_labels)
+            #             predict_y = torch.max(outputs, dim=1)[1]
+            #             acc += torch.eq(predict_y, val_labels.to(device)).sum().item()
+            #
+            #         val_accurate = acc / 10000
+            #         print('[%d, %5d] train_loss: %.3f  test_accuracy: %.3f' %  # 打印epoch，step，loss，accuracy
+            #               (epoch + 1, step + 1, running_loss / 500, val_accurate))
+            #
+            #         print('%f s' % (time.perf_counter() - time_start))  # 打印耗时
+            #
+            # train_bar.desc = "train epoch[{}/{}] loss:{:.3f}".format(epoch + 1,
+            #                                                          epochs,
+            #                                                          loss)
+
+        # validate
+        predict_yno = []
+        net.eval()
+        acc = 0.0  # accumulate accurate number / epoch
+        with torch.no_grad():#全部不求导
+            val_bar = tqdm(test_loader)
+            for val_data in val_bar:
+                val_images, val_labels = val_data
+                outputs = net(val_images.to(device))
+                # loss = loss_function(outputs, test_labels)
+                predict_y = torch.max(outputs, dim=1)[1]#行最大值，返回index
+                predict_yno.append(int(predict_y[0]))
+                acc += torch.eq(predict_y, val_labels.to(device)).sum().item()
+
+            val_accurate = acc / 10000
+            print('[%d, %5d] train_loss: %.3f  test_accuracy: %.3f' %  # 打印epoch，step，loss，accuracy
+                  (epoch + 1, step + 1, running_loss / len(train_loader), val_accurate))
+
+            print('%f s' % (time.perf_counter() - time_start))  # 打印耗时
+            running_loss = 0.0
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-transform = transforms.Compose(
-    [transforms.ToTensor(),
-     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+        if val_accurate > best_acc:
+            best_acc = val_accurate
+            torch.save(net.state_dict(), save_path)
 
-train_set = torchvision.datasets.CIFAR10(root='datasets', train=True,
-                                         download=True, transform=transform)
-# 加载训练集，实际过程需要分批次（batch）训练
-train_loader = torch.utils.data.DataLoader(train_set, batch_size=50,
-                                           shuffle=True, num_workers=0)
-
-# 10000张测试图片
-test_set = torchvision.datasets.CIFAR10(root='datasets', train=False,
-                                        download=False, transform=transform)
-test_loader = torch.utils.data.DataLoader(test_set, batch_size=10000,
-                                          shuffle=False, num_workers=0)
-# classes = ('plane', 'car', 'bird', 'cat',
-#            'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
-
-# 获取测试集中的图像和标签，用于accuracy计算
-test_data_iter = iter(test_loader)
-test_image, test_label = test_data_iter.next()
-#
-# def imshow(img):  # 展示测试集图片和标签
-#     img = img / 2 + 0.5     # unnormalize
-#     npimg = img.numpy()
-#     plt.imshow(np.transpose(npimg, (1, 2, 0)))
-#     plt.show()
-#
-# # print labels
-# print(' '.join('%5s' % classes[test_label[j]] for j in range(4)))
-# # show images
-# imshow(torchvision.utils.make_grid(test_label))
+    print('Finished Training')
 
 
-
-
-net = LeNet()  # 定义训练的网络模型
-net.to(device)
-# weight_params = []
-# for pname, p in net.named_parameters():
-#     if ( 'fc' in pname and 'weight' in pname):  #'conv' or
-#         weight_params += [p]
-
-
-loss_function = nn.CrossEntropyLoss()  # 定义损失函数为交叉熵损失函数
-# 定义优化器（训练参数，学习率）
-optimizer = optim.Adam(net.parameters(), lr=0.001)
-# optimizer = optim.Adam([
-#             {'params': weight_params}],
-#             lr=0.001,
-#             )
-
-for epoch in range(10):  # 一个epoch即对整个训练集进行一次训练
-    running_loss = 0.0
-    time_start = time.perf_counter()
-
-    for step, data in enumerate(train_loader, start=0):  # 遍历训练集，step从0开始计算
-        inputs, labels = data  # 获取训练集的图像和标签
-        optimizer.zero_grad()  # 清除历史梯度
-
-
-        # labels2=labels.clone()
-        # labels2[0] = 9
-        # forward + backward + optimize
-        outputs = net(inputs.to(device))  # 正向传播
-        loss = loss_function(outputs, labels.to(device))  # 计算损失
-        loss.backward()  # 反向传播
-        optimizer.step()  # 优化器更新参数
-
-        # 打印耗时、损失、准确率等数据
-        running_loss += loss.item()
-        if step % 1000 == 999:  # print every 1000 mini-batches，每1000步打印一次
-            with torch.no_grad():  # 在以下步骤中（验证过程中）不用计算每个节点的损失梯度，防止内存占用
-                outputs = net(test_image.to(device))  # 测试集传入网络（test_batch_size=10000），output维度为[10000,10]
-                predict_y = torch.max(outputs, dim=1)[1]  # 以output中值最大位置对应的索引（标签）作为预测输出
-                accuracy = (predict_y == test_label.to(device)).sum().item() / test_label.size(0)
-
-                print('[%d, %5d] train_loss: %.3f  test_accuracy: %.3f' %  # 打印epoch，step，loss，accuracy
-                      (epoch + 1, step + 1, running_loss / 500, accuracy))
-
-                print('%f s' % (time.perf_counter() - time_start))  # 打印耗时
-                running_loss = 0.0
-
-print('Finished Training')
-
-# 保存训练得到的参数
-save_path = './Lenet.pth'
-torch.save(net.state_dict(), save_path)
+if __name__ == '__main__':
+    main()
