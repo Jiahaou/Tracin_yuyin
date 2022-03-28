@@ -58,35 +58,34 @@ dict = {
     'boring': torch.Tensor([4]),
     'fear': torch.Tensor([5]),
 }
-getdata=get_data(featuresExist,featuresFileName,WAV_PATH,RATE,
-                FEATURES_TO_USE,toSaveFeatures,BATCH_SIZE,impro_or_script)
-
-if (featuresExist == True):
-    with open(featuresFileName, 'rb')as f:
-        features = pickle.load(f)
-    train_X_features = features['train_X']
-    train_y = features['train_y']
-    train_z = features['train_z']
-    test_X_features = features['test_X']
-    test_y = features['test_y']
-    test_z = features['test_z']
-else:
-    logging.info("creating meta dict...")
-    train_X, train_y,train_z,  test_X, test_y,test_z = getdata.getdata_Tracin(WAV_PATH)
-    print(train_X.shape)
 
 
-    print("getting features")
-    logging.info('getting features')
-    feature_extractor = FeatureExtractor(rate=RATE)
-    train_X_features = feature_extractor.get_features(FEATURES_TO_USE, train_X)
-    test_X_features = feature_extractor.get_features(FEATURES_TO_USE, test_X)
-    valid_features_dict = {}
-    if (toSaveFeatures == True):
-        features = {'train_X': train_X_features, 'train_y': train_y,'train_z':train_z,
-                    'test_X': test_X_features, 'test_y': test_y,'test_z': test_z,}
-        with open(featuresFileName, 'wb') as f:
-            pickle.dump(features, f)
+# if (featuresExist == True):
+#     with open(featuresFileName, 'rb')as f:
+#         features = pickle.load(f)
+#     train_X_features = features['train_X']
+#     train_y = features['train_y']
+#     train_z = features['train_z']
+#     test_X_features = features['test_X']
+#     test_y = features['test_y']
+#     test_z = features['test_z']
+# else:
+#     logging.info("creating meta dict...")
+#     train_X, train_y,train_z,  test_X, test_y,test_z = getdata.getdata_Tracin(WAV_PATH)
+#     print(train_X.shape)
+#
+#
+#     print("getting features")
+#     logging.info('getting features')
+#     feature_extractor = FeatureExtractor(rate=RATE)
+#     train_X_features = feature_extractor.get_features(FEATURES_TO_USE, train_X)
+#     test_X_features = feature_extractor.get_features(FEATURES_TO_USE, test_X)
+#     valid_features_dict = {}
+#     if (toSaveFeatures == True):
+#         features = {'train_X': train_X_features, 'train_y': train_y,'train_z':train_z,
+#                     'test_X': test_X_features, 'test_y': test_y,'test_z': test_z,}
+#         with open(featuresFileName, 'wb') as f:
+#             pickle.dump(features, f)
 
 
 
@@ -118,35 +117,76 @@ class DataSet(object):
         return len(self.X)
 
 
-train_data = DataSet(train_X_features, train_y,train_z)   # 初始化了X和Y的值
-train_loader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True)
-test_data = DataSet(test_X_features, test_y,test_z)  # 初始化了X和Y的值
-test_loader = DataLoader(test_data, batch_size=BATCH_SIZE, shuffle=True)
-model = MACNN(attention_head, attention_hidden)  # 调用模型
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-# model_weight_path = "MACNN_mfcc_1.pth"
-# assert os.path.exists(model_weight_path), "file {} does not exist.".format(model_weight_path)
-# model=torch.load(model_weight_path)
-if torch.cuda.is_available():  # 使用GPU
-  model = model.cuda()
-loss_function = nn.CrossEntropyLoss()  # 定义交叉熵损失函数
-optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-6) # 更新参数优化
-outdir = Path("result_Tracin")
-# 一个epoch的训练过程
-print(device)
-  # 一个epoch即对整个训练集进行一次训练
-
-all_loss = 0.0
-time_start = time.perf_counter()
-influence_results={}
-# for i, batch_i in enumerate(tqdm(test_loader)):  # 遍历训练集，step从0开始计算
-    # inputs,labels = batch_i  # 获取训练集的语音和标签
+# train_data = DataSet(train_X_features, train_y,train_z)   # 初始化了X和Y的值
+# train_loader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True)
+# test_data = DataSet(test_X_features, test_y,test_z)  # 初始化了X和Y的值
+# test_loader = DataLoader(test_data, batch_size=BATCH_SIZE, shuffle=True)
+# model = MACNN(attention_head, attention_hidden)  # 调用模型
+# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# # model_weight_path = "MACNN_mfcc_1.pth"
+# # assert os.path.exists(model_weight_path), "file {} does not exist.".format(model_weight_path)
+# # model=torch.load(model_weight_path)
+# if torch.cuda.is_available():  # 使用GPU
+#   model = model.cuda()
+# loss_function = nn.CrossEntropyLoss()  # 定义交叉熵损失函数
+# optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-6) # 更新参数优化
+# outdir = Path("result_Tracin")
+# # 一个epoch的训练过程
+# print(device)
+#   # 一个epoch即对整个训练集进行一次训练
+#
+# all_loss = 0.0
+# time_start = time.perf_counter()
+# influence_results={}
+# # for i, batch_i in enumerate(tqdm(test_loader)):  # 遍历训练集，step从0开始计算
+#     # inputs,labels = batch_i  # 获取训练集的语音和标签
 
 epochs=3
 save_pth="pth/MACNN_mcff"
 load_pth="pth/MACNN_mcffepoch.pth"
 best_acc = 0.0
 for epoch in range(epochs):
+    topk=50
+    getdata = get_data(featuresExist, featuresFileName, WAV_PATH, RATE,
+                       FEATURES_TO_USE, toSaveFeatures, BATCH_SIZE, impro_or_script,topk)
+    train_X, train_y, train_z, test_X, test_y, test_z = getdata.getdata_Tracin(WAV_PATH)
+    print(train_X.shape)
+
+    print("getting features")
+    logging.info('getting features')
+    feature_extractor = FeatureExtractor(rate=RATE)
+    train_X_features = feature_extractor.get_features(FEATURES_TO_USE, train_X)
+    test_X_features = feature_extractor.get_features(FEATURES_TO_USE, test_X)
+    valid_features_dict = {}
+    if (toSaveFeatures == True):
+        features = {'train_X': train_X_features, 'train_y': train_y, 'train_z': train_z,
+                    'test_X': test_X_features, 'test_y': test_y, 'test_z': test_z, }
+        with open(featuresFileName, 'wb') as f:
+            pickle.dump(features, f)
+    train_data = DataSet(train_X_features, train_y, train_z)  # 初始化了X和Y的值
+    train_loader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True)
+    test_data = DataSet(test_X_features, test_y, test_z)  # 初始化了X和Y的值
+    test_loader = DataLoader(test_data, batch_size=BATCH_SIZE, shuffle=True)
+    model = MACNN(attention_head, attention_hidden)  # 调用模型
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # model_weight_path = "MACNN_mfcc_1.pth"
+    # assert os.path.exists(model_weight_path), "file {} does not exist.".format(model_weight_path)
+    # model=torch.load(model_weight_path)
+    if torch.cuda.is_available():  # 使用GPU
+        model = model.cuda()
+    loss_function = nn.CrossEntropyLoss()  # 定义交叉熵损失函数
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-6)  # 更新参数优化
+    outdir = Path("result_Tracin")
+    # 一个epoch的训练过程
+
+    # 一个epoch即对整个训练集进行一次训练
+
+    all_loss = 0.0
+    time_start = time.perf_counter()
+    influence_results = {}
+    # for i, batch_i in enumerate(tqdm(test_loader)):  # 遍历训练集，step从0开始计算
+    # inputs,labels = batch_i  # 获取训练集的语音和标签
+
     # train
     if load_pth:
         model.load_state_dict(torch.load(load_pth))
