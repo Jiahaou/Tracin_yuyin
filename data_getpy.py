@@ -14,7 +14,7 @@ from tqdm import tqdm
 import numpy as np
 
 class get_data(object):
-    def __init__(self, featuresExist,featuresFileName,WAV_PATH,rate,FEATURES_TO_USE,toSaveFeatures,BATCH_SIZE,impro_or_script):
+    def __init__(self, featuresExist,featuresFileName,WAV_PATH,rate,FEATURES_TO_USE,toSaveFeatures,BATCH_SIZE,impro_or_script,topk):
         self.featuresExist = featuresExist
         self.WAV_PATH= WAV_PATH
         self.featuresFileName = featuresFileName
@@ -23,12 +23,13 @@ class get_data(object):
         self.toSaveFeatures =toSaveFeatures
         self.BATCH_SIZE =BATCH_SIZE
         self.impro_or_script=impro_or_script
+        self.topk=topk
 
 
     def getdata_Tracin(self, path, RATE=16000):  # t=2 按照时间间隔为2秒来进行划分
         #  把每条语句切分成多个2秒的片段，片段之间存在1秒的重叠（测试集是1.6秒重叠）
         path = path.rstrip('/')  # 删除路径后面的'/'符号
-        wav_files = glob.glob(path + '/*.wav')  # 获取声音文件
+
 
         LABEL_DICT1 = {  # 情绪标签文件
             '01': 'neutral',
@@ -41,24 +42,36 @@ class get_data(object):
             # '08': 'surprised'
         }
         #  预处理
-        n=500
-
-        train_files = []  # 训练集
-        valid_files = []  # 测试集
-        # 将元组转化为列表list()
-        train_indices = list(np.random.choice(range(n), int(n * 0.8), replace=False))  # 随机获取80%的训练数据
-        valid_indices = list(set(range(n)) - set(train_indices))  # 将剩下的数据作为测试数据
-        train_indices = list(set(range(n)) - set(valid_indices))
-        for i in train_indices:  # 分别将数据放入相应的列表
-            train_files.append(wav_files[i])
-        for i in valid_indices:
-            valid_files.append(wav_files[i])
+        #当从iemocap里面取数据时
+        # n=500
+        # wav_files = glob.glob(path + '/*.wav')  # 获取声音文件
+        # train_files = []  # 训练集
+        # valid_files = []  # 测试集
+        #
+        # # 将元组转化为列表list()
+        # train_indices = list(np.random.choice(range(n), int(n * 0.8), replace=False))  # 随机获取80%的训练数据
+        # valid_indices = list(set(range(n)) - set(train_indices))  # 将剩下的数据作为测试数据
+        # train_indices = list(set(range(n)) - set(valid_indices))
+        # for i in train_indices:  # 分别将数据放入相应的列表
+        #     train_files.append(wav_files[i])
+        # for i in valid_indices:
+        #     valid_files.append(wav_files[i])
+        train_files=[]
+        path_math="save_top/save_top{}.json".format(self.topk)
+        train_files_all = glob.glob("Train/" + '/*.wav')  # 获取声音文件
+        valid_files = glob.glob("Test/" + '/*.wav')  # 获取声音文件
+        for i in (train_files_all):
+            with open(path_math,'r')as s2:
+                name=str(os.path.basename(i).split('\\')[0])
+                if name in s2.readlines()[0]:
+                    train_files.append(i)
+        valid_files=valid_files[:100]
         train_X = []
         train_y = []
         train_z = []
         print("constructing meta dictionary for {}...".format(path))
         # 这里的enumerate() 函数用于将一个可遍历的数据对象(如列表、元组或字符串)组合为一个索引序列，
-        for i, wav_file in enumerate(tqdm(train_files)):  # 这里是对于训练数据来处理
+        for i, wav_file in enumerate(tqdm(train_files_all)):  # 这里是对于训练数据来处理
             label = str(os.path.basename(wav_file).split('-')[2])  # 函数返回path最后的文件名，获取标签的名称
 
             if (label not in LABEL_DICT1):  # 如果标签不在标签字典里面，就执行下面的语句，否则跳出if
@@ -67,7 +80,7 @@ class get_data(object):
                 continue
             label = LABEL_DICT1[label]
             # 将wav切分成2秒的片段，并丢弃少于2秒的部分
-            train_data, _ = librosa.load(wav_file, sr=RATE)  # sr=1600000
+            train_data, _ = librosa.load(wav_file, sr=RATE)  # 采样率sr=16000,转化为numpy的格式
             train_name = str(os.path.basename(wav_file).split('\\')[0])
             train_y.append(label)
             train_X.append(train_data)
@@ -124,7 +137,7 @@ class get_data(object):
     def process_data(self,path, t=2, train_overlap=1, val_overlap=1.6, RATE=16000): # t=2 按照时间间隔为2秒来进行划分
         #  把每条语句切分成多个2秒的片段，片段之间存在1秒的重叠（测试集是1.6秒重叠）
         path = path.rstrip('/')  # 删除路径后面的'/'符号
-        wav_files = glob.glob(path + '/*.wav')  # 获取声音文件
+
         meta_dict = {}
         val_dict = {}
         LABEL_DICT1 = {     #  情绪标签文件
@@ -138,19 +151,23 @@ class get_data(object):
             # '08': 'surprised'
         }
     #  预处理
-        n = 120
-        wav_files_2 = wav_files[:n]
-        train_files = []    #  训练集
-        valid_files = []    #  测试集
-        # 将元组转化为列表list()
-        train_indices = list(np.random.choice(range(n), int(n * 0.8), replace=False))  # 随机获取80%的训练数据
-        valid_indices = list(set(range(n)) - set(train_indices))  #  将剩下的数据作为测试数据
-        train_indices = list(set(range(n)) - set(valid_indices))
-        for i in train_indices: # 分别将数据放入相应的列表
-            train_files.append(wav_files_2[i])
-        for i in valid_indices:
-            valid_files.append(wav_files_2[i])
-
+    #     n = 500
+    #     wav_files = glob.glob(path + '/*.wav')  # 获取声音文件
+    #     wav_files_2 = wav_files[:n]
+    #     train_files = []    #  训练集
+    #     valid_files = []    #  测试集
+    #     # 将元组转化为列表list()
+    #     train_indices = list(np.random.choice(range(n), int(n * 0.8), replace=False))  # 随机获取80%的训练数据
+    #     valid_indices = list(set(range(n)) - set(train_indices))  #  将剩下的数据作为测试数据
+    #     train_indices = list(set(range(n)) - set(valid_indices))
+    #     for i in train_indices: # 分别将数据放入相应的列表
+    #         train_files.append(wav_files_2[i])
+    #     for i in valid_indices:
+    #         valid_files.append(wav_files_2[i])
+        train_files = glob.glob("Train/" + '/*.wav')  # 获取声音文件
+        valid_files = glob.glob("Test/" + '/*.wav')  # 获取声音文件
+        train_files = train_files[:400]
+        valid_files = valid_files[:100]
         print("constructing meta dictionary for {}...".format(path))
         # 这里的enumerate() 函数用于将一个可遍历的数据对象(如列表、元组或字符串)组合为一个索引序列，
         for i, wav_file in enumerate(tqdm(train_files)):  #  这里是对于训练数据来处理
@@ -213,13 +230,16 @@ class get_data(object):
             y1 = []
             z1 = []
             index = 0
+
             if (t * RATE >= len(wav_data)):
                 continue
+            k2 = 0
             while (index + t * RATE < len(wav_data)):
                 X1.append(wav_data[int(index):int(index + t * RATE)])
                 y1.append(label)
                 index += int((t - val_overlap) * RATE)
-                z1.append(str(os.path.basename(wav_file).split('\\')[0]))
+                k2+=1
+                z1.append(str(os.path.basename(wav_file).split('\\')[0])+str(k2))
             X1 = np.array(X1)
             val_dict[i] = {
                 'X': X1,
