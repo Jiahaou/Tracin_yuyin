@@ -48,7 +48,7 @@ impro_or_script = 'impro'
 featuresFileName = 'features_{}_{}.pkl'.format(FEATURES_TO_USE, impro_or_script)
 featuresExist = False
 toSaveFeatures = True
-WAV_PATH = "D:\SER\IEMOCAP/"  # 声音文件的显示路径
+WAV_PATH = "D:\XJH__tracin\IEMOCAP/"  # 声音文件的显示路径
 RATE = 16000
 MODEL_NAME = 'MACNN'    # 使用上面定义的
 MODEL_PATH = '{}_{}_1.pth'.format(MODEL_NAME, FEATURES_TO_USE) # 定义的模型的路径
@@ -188,7 +188,7 @@ for i, batch_i in enumerate(tqdm(test_loader)):
                                   'ifs': train_influences}
     if i == len(test_loader)-1:
 
-        save_json(influence_results, outdir.joinpath(f'did-{i}macnn.json'))
+        save_json(influence_results, outdir.joinpath(f'did-{i}-macnn.json'))
 time_end=time.perf_counter()
 print(time_end-time_start)
 
