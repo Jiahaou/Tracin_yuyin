@@ -57,7 +57,7 @@ class get_data(object):
         # for i in valid_indices:
         #     valid_files.append(wav_files[i])
         train_files=[]
-        path_math="save_top/save_top1425_{}_new_reverse.json".format(self.topk)
+        path_math="save_top_no_model/save_top1425_{}_new.json".format(self.topk)
         train_files_all = glob.glob("Train/" + '/*.wav')  # 获取声音文件
         valid_files = glob.glob("Test/" + '/*.wav')  # 获取声音文件
        #不按照顺序，输入tracin中的数据
@@ -517,7 +517,7 @@ class get_data(object):
             # '08': 'surprised'
         }
         train_files=[]
-        path_math="save_top/save_top1425_100_new_reverse.json"
+        path_math="save_top_no_model/save_top1425_100_new_reverse.json"
         train_files_all = glob.glob("Train/" + '/*.wav')  # 获取声音文件
         valid_files = glob.glob("Test/" + '/*.wav')  # 获取声音文件
         lei1=[]
@@ -663,6 +663,112 @@ class get_data(object):
 
 
 
+
+        train_X = np.row_stack(train_X)
+        train_y = np.array(train_y)
+        train_z = np.array(train_z)
+        assert len(train_X) == len(train_y), "X length and y length must match! X shape: {}, y length: {}".format(
+            train_X.shape, train_y.shape)
+        return train_X, train_y, train_z, test_X, test_y, test_z
+
+    def getdata_train_random(self, path, RATE=16000):  # t=2 按照时间间隔为2秒来进行划分
+        #  把每条语句切分成多个2秒的片段，片段之间存在1秒的重叠（测试集是1.6秒重叠）
+        path = path.rstrip('/')  # 删除路径后面的'/'符号
+
+        LABEL_DICT1 = {  # 情绪标签文件
+            '01': 'neutral',
+            # '02': 'frustration',
+            # '03': 'happy',
+            '04': 'sad',
+            '05': 'angry',
+            # '06': 'fearful',
+            '07': 'happy',  # excitement->happy
+            # '08': 'surprised'
+        }
+        #  预处理
+        # 当从iemocap里面取数据时
+        train_files_all = glob.glob("Train/" + '/*.wav')
+        valid_files = glob.glob("Test/" + '/*.wav')  # 获取声音文件
+        n = ceil(len(train_files_all)*(self.topk/100))
+        # wav_files = glob.glob(path + '/*.wav')  # 获取声音文件
+        train_files = []  # 训练集
+          # 测试集
+        #
+        # 将元组转化为列表list()
+        train_indices = list(np.random.choice(range(len(train_files_all)), n, replace=False))  # 随机获取80%的训练数据
+
+        for i in train_indices:  # 分别将数据放入相应的列表
+            train_files.append(train_files_all[i])
+
+
+
+
+        # 不按照顺序，输入tracin中的数据
+        # for i in (train_files_all):
+        #     with open(path_math,'r')as s2:
+        #         name=str(os.path.basename(i).split('\\')[0])
+        #         if name not in s2.readlines()[0]:
+        #             train_files.append(i)
+
+        '''按顺序输入数据，保持tracin的顺序'''
+
+        train_X = []
+        train_y = []
+        train_z = []
+        print("constructing meta dictionary for random{}...".format(self.topk))
+        # 这里的enumerate() 函数用于将一个可遍历的数据对象(如列表、元组或字符串)组合为一个索引序列，
+        for i, wav_file in enumerate(tqdm(train_files)):  # 这里是对于训练数据来处理
+            label = str(os.path.basename(wav_file).split('-')[2])  # 函数返回path最后的文件名，获取标签的名称
+
+            if (label not in LABEL_DICT1):  # 如果标签不在标签字典里面，就执行下面的语句，否则跳出if
+                continue
+            if (self.impro_or_script != 'all' and (self.impro_or_script not in wav_file)):  # 训练数据仅仅是采用了随机发挥的文本
+                continue
+            label = LABEL_DICT1[label]
+            # 将wav切分成2秒的片段，并丢弃少于2秒的部分
+            train_data, _ = librosa.load(wav_file, sr=RATE)  # 采样率sr=16000,转化为numpy的格式
+            train_name = str(os.path.basename(wav_file).split('\\')[0])
+            train_y.append(label)
+            train_X.append(train_data)
+            train_z.append(train_name)
+
+        test_X = []
+        test_y = []
+        test_z = []
+        for i, wav_file in enumerate(tqdm(valid_files)):
+            label = str(os.path.basename(wav_file).split('-')[2])
+            if (label not in LABEL_DICT1):
+                continue
+            # if (impro_or_script != 'all' and (impro_or_script not in wav_file)):
+            #     continue
+            label = LABEL_DICT1[label]
+            wav_data, _ = librosa.load(wav_file, sr=RATE)
+            test_z.append(str(os.path.basename(wav_file).split('\\')[0]))
+            test_X.append(wav_data)
+            test_y.append(label)
+
+        length = sum([len(i) for i in train_X]) // len(train_X)
+        length2 = sum([len(i) for i in test_X]) // len(test_X)
+        length_all = 84351
+        for i in range(len(train_X)):
+            if len(train_X[i]) <= length_all:  # 使所有的ndarry长度一致
+                A = np.zeros(length_all)
+                A[:len(train_X[i])] = train_X[i]
+                train_X[i] = A
+            else:
+                train_X[i] = train_X[i][:length_all]
+        for i in range(len(test_X)):
+            if len(test_X[i]) <= length_all:  # 使所有的ndarry长度一致
+                B = np.zeros(length_all)
+                B[:len(test_X[i])] = test_X[i]
+                test_X[i] = B
+            else:
+                test_X[i] = test_X[i][:length_all]
+        test_X = np.row_stack(test_X)  # 所有行合并
+        test_y = np.array(test_y)
+        test_z = np.array(test_z)
+        assert len(test_X) == len(test_y), "X length and y length must match! X shape: {}, y length: {}".format(
+            test_X.shape, test_y.shape)
 
         train_X = np.row_stack(train_X)
         train_y = np.array(train_y)
