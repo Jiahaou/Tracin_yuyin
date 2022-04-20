@@ -35,7 +35,7 @@ def setup_seed(seed):
     random.seed(seed)
     torch.backends.cudnn.deterministic = True
 """定义注意力卷积模型"""
-setup_seed(222222)  # seed( ) 用于指定随机数生成时所用算法开始的整数值
+setup_seed(2222220)  # seed( ) 用于指定随机数生成时所用算法开始的整数值
 attention_head = 4
 attention_hidden = 32
 learning_rate = 0.001  # 学习率设置初值
@@ -46,10 +46,11 @@ impro_or_script = 'impro'
 featuresFileName = 'features_{}_{}.pkl'.format(FEATURES_TO_USE, impro_or_script)
 featuresExist = False
 toSaveFeatures = True
-WAV_PATH = "D:\SER\IEMOCAP/"  # 声音文件的显示路径
+WAV_PATH = "IEMOCAP/"  # 声音文件的显示路径
 RATE = 16000
 MODEL_NAME = 'MACNN'    # 使用上面定义的
 MODEL_PATH = '{}_{}_222222.pth'.format(MODEL_NAME, FEATURES_TO_USE) # 定义的模型的路径
+topk=100
 dict = {
     'neutral': torch.Tensor([0]),
     'happy': torch.Tensor([1]),
@@ -59,7 +60,7 @@ dict = {
     'fear': torch.Tensor([5]),
 }
 getdata=get_data(featuresExist,featuresFileName,WAV_PATH,RATE,
-                FEATURES_TO_USE,toSaveFeatures,BATCH_SIZE,impro_or_script)
+                FEATURES_TO_USE,toSaveFeatures,BATCH_SIZE,impro_or_script,topk)
 
 if (featuresExist == True):
     with open(featuresFileName, 'rb')as f:
@@ -122,7 +123,8 @@ train_data = DataSet(train_X_features, train_y,train_z)   # 初始化了X和Y的
 train_loader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True)
 test_data = DataSet(test_X_features, test_y,test_z)  # 初始化了X和Y的值
 test_loader = DataLoader(test_data, batch_size=BATCH_SIZE, shuffle=True)
-model = MACNN(attention_head, attention_hidden)  # 调用模型
+model = MACNN(topk,attention_head, attention_hidden)  # 调用模型
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # model_weight_path = "MACNN_mfcc_1.pth"
 # assert os.path.exists(model_weight_path), "file {} does not exist.".format(model_weight_path)
@@ -141,7 +143,7 @@ time_start = time.perf_counter()
 influence_results={}
 # for i, batch_i in enumerate(tqdm(test_loader)):  # 遍历训练集，step从0开始计算
     # inputs,labels = batch_i  # 获取训练集的语音和标签
-for i, batch_i in enumerate(tqdm(test_loader)):
+for i, batch_i in enumerate(tqdm(train_loader)):
     inputs, labels,name = batch_i[0].to(device), batch_i[1].to(device), batch_i[2]
     inputs = Variable(torch.unsqueeze(inputs, dim=0).float(), requires_grad=False)
     # labels2=labels.clone()
@@ -150,12 +152,12 @@ for i, batch_i in enumerate(tqdm(test_loader)):
     outputs = model(inputs)
     # 正向传播
     labels=labels.view(1)
-    loss = loss_function(outputs, labels)  # 计算损失
-    grad_z_test = grad(loss, model.parameters())
+    loss = loss_function(outputs, labels)  # 计算损失梯度
+    grad_z_test = grad(loss, model.parameters())#由学习率加权，并跨检查点求和。
     grad_z_test = pick_gradient(grad_z_test, model)
     train_influences={}
-    for j, batch_j in enlabels_trainumerate((train_loader)):
-        inputs_train, ,name_train = batch_j[0].to(device), batch_j[1].to(device) , batch_j[2] # 获取训练集的语音和标签
+    for j, batch_j in enumerate((test_loader)):
+        inputs_train,labels_train ,name_train = batch_j[0].to(device), batch_j[1].to(device) , batch_j[2] # 获取训练集的语音和标签
         inputs_train = Variable(torch.unsqueeze(inputs_train, dim=0).float(), requires_grad=False)
         # labels2=labels.clone()
         # labels2[0] = 9
@@ -163,21 +165,21 @@ for i, batch_i in enumerate(tqdm(test_loader)):
 
         outputs_train = model(inputs_train.to(device))  # 正向传播
         labels_train = labels_train.view(1)
-        grad_z_train = grad(loss_train, model.parameters())        loss_train = loss_function(outputs_train, labels_train.to(device))  # 计算损失
 
+        loss_train = loss_function(outputs_train, labels_train.to(device))  # 计算损失
+        grad_z_train = grad(loss_train, model.parameters())
         grad_z_train = pick_gradient(grad_z_train, model)
         score = param_vec_dot_product(grad_z_test, grad_z_train)
         if j not in train_influences:    #加入json文件保存
-            train_influences[j] = {'train_dat': (str(train_loader.dataset.Z[j])),
+            train_influences[j] = {'train_dat': (str(test_loader.dataset.Z[j])),
                                       'if': float(score)}
     if i not in influence_results:
-        influence_results[i] = {'test_dat': (str(test_loader.dataset.Z[i])),
+        influence_results[i] = {'test_dat': (str(train_loader.dataset.Z[i])),
                                   'ifs': train_influences}
-    if i == len(test_loader)-1:
+    if i == len(train_loader)-1:
 
-        save_json(influence_results, outdir.joinpath(f'Tracin-{i}macnn.json'))
+        save_json(influence_results, outdir.joinpath(f'Tracin-{i}-macnn.json'))
 time_end=time.perf_counter()
 print(time_end-time_start)
 
 
-torch.save(model, MODEL_PATH)
