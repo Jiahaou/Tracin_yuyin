@@ -70,11 +70,11 @@ def sum_train(text):#把一个train里面所有的相加，我这把traindat和t
                     continue
     topk=100
     tt=str(os.path.basename(text).split('-')[1])
-    with open("save_top/save_top{}_{}_new.json".format(tt,topk), "w") as w:
+    with open("save_top_no_model/save_top{}_{}_new.json".format(tt,topk), "w") as w:
         k=sorted(dict.items(),key=lambda x:x[1],reverse=True)[:ceil((topk/100)*len(dict))]
         w.write(str(k))
         print(len(k))
-    with open("save_top/save_top{}_{}_new_reverse.json".format(tt,topk), "w") as w:
+    with open("save_top_no_model/save_top{}_{}_new_reverse.json".format(tt,topk), "w") as w:
         k2=sorted(dict.items(),key=lambda x:x[1],reverse=False)[:ceil((topk/100)*len(dict))]
         w.write(str(k2))
         print(len(k2))
@@ -89,5 +89,5 @@ def spearman(x, y):
 # sort_a("result_Tracin/Tracin-317-macnn_2022-04-08-17-52-37.json",x)
 # sort_a("result_Tracin/Tracin-317-macnn.json",y)
 # print('Spearman Rho: %f' % spearman(x, y))
-sum_train("result_Tracin/Tracin-1425-macnn.json")
+sum_train("result_Tracin/Tracin-1425-macnn_2022-04-13-10-44-40.json")
 # sum_a("result_Tracin/Tracin-317-macnn_2022-04-08-17-52-37.json")
