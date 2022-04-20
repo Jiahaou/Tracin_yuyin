@@ -4,8 +4,9 @@ import torch.nn.functional as F
 import torch
 class MACNN(nn.Module):    # 定义注意力卷积模型
     # 相当于输入的特征值的不同数量，详见ppt
-    def __init__(self, attention_heads=8, attention_hidden=256, out_size=4):
+    def __init__(self,topk,attention_heads=8, attention_hidden=256, out_size=8,):
         super(MACNN, self).__init__()  # 继承函数__init__()中的相关的参数
+        self.topk = topk
         self.attention_heads = attention_heads # 定义一共有几个注意力头
         self.attention_hidden = attention_hidden # 定义注意力层的层数
         # 接下来就是定义的各个卷积层
@@ -35,10 +36,16 @@ class MACNN(nn.Module):    # 定义注意力卷积模型
         self.attention_query = nn.ModuleList() # 这里添加的是几个层而不是模型
         self.attention_key = nn.ModuleList()
         self.attention_value = nn.ModuleList()
+        linear_m=0
+        if topk in [10,20,30,40,50,60,70,80,90,100]:
+            linear_m = 246
+
+        else:
+            linear_m=246
         for i in range(self.attention_heads):
-          self.attention_query.append(nn.Linear(90, 90))
-          self.attention_key.append(nn.Linear(90, 90))
-          self.attention_value.append(nn.Linear(90, 90))
+          self.attention_query.append(nn.Linear(linear_m,linear_m))
+          self.attention_key.append(nn.Linear(linear_m, linear_m))
+          self.attention_value.append(nn.Linear(linear_m,linear_m))
 
 # 定义前向传播函数 就是模型照着来
 
