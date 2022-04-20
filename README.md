@@ -18,6 +18,6 @@ model.py编写了Macnn的模型
 
 sort.py编写了读取所有结果并且将它们按照序列号排序好的代码
 
-train.py是训练前百分制的数据并记录
+train_change.py是训练前百分制的数据并记录，调节里面的端口函数，可以实现计算类top、类bottom和总数top、总数bottom以及随机数的准确率的计算
 
 retrain.py是预训练数据获得新的模型。
