@@ -40,7 +40,7 @@ attention_head = 4
 attention_hidden = 32
 learning_rate = 0.001  # 学习率设置初值
 Epochs = 50    #  总共次数的训练迭代
-BATCH_SIZE = 32 # 一次训练所选取的样本数。
+BATCH_SIZE = 1 # 一次训练所选取的样本数。
 FEATURES_TO_USE = 'mfcc'  # {'mfcc' , 'logfbank','fbank','spectrogram','melspectrogram'}
 impro_or_script = 'impro'
 featuresFileName = 'features_{}_{}.pkl'.format(FEATURES_TO_USE, impro_or_script)
@@ -52,13 +52,11 @@ MODEL_NAME = 'MACNN'    # 使用上面定义的
 MODEL_PATH = '{}_{}_222222.pth'.format(MODEL_NAME, FEATURES_TO_USE) # 定义的模型的路径
 dict = {
     'neutral': torch.Tensor([0]),
-    'frustration': torch.Tensor([1]),
-    'happy': torch.Tensor([2]),
-    'sad': torch.Tensor([3]),
-    'angry': torch.Tensor([4]),
-    'fearful': torch.Tensor([5]),
-    'disgust': torch.Tensor([6]),
-    'surprised': torch.Tensor([7]),
+    'happy': torch.Tensor([1]),
+    'sad': torch.Tensor([2]),
+    'angry': torch.Tensor([3]),
+    'boring': torch.Tensor([4]),
+    'fear': torch.Tensor([5]),
 }
 
 
@@ -87,7 +85,7 @@ class DataSet(object):
 topk=1
 getdata = get_data(featuresExist, featuresFileName, WAV_PATH, RATE,
                    FEATURES_TO_USE, toSaveFeatures, BATCH_SIZE, impro_or_script,topk)
-train_X, train_y, train_z, test_X, test_y, test_z = getdata.getdata_retrain(WAV_PATH)
+train_X, train_y, train_z, test_X, test_y, test_z = getdata.getdata_checkpoint(WAV_PATH)
 print(train_X.shape)
 
 print("getting features")
@@ -143,7 +141,7 @@ optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-6) 
 # # for i, batch_i in enumerate(tqdm(test_loader)):  # 遍历训练集，step从0开始计算
 #     # inputs,labels = batch_i  # 获取训练集的语音和标签
 
-epochs=50
+epochs=1
 
 save_pth="retrain_MACNN"
 # if "retrain_MACNN.pth":
@@ -165,14 +163,15 @@ for epoch in (range(epochs)):
             break
         inputs = Variable(torch.unsqueeze(inputs, dim=1).float(), requires_grad=False)
         logits = model(inputs.to(device))
-        labels = labels.view(32)
+        labels = labels.view(1)
         loss = loss_function(logits, labels.to(device))
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()  # 计算梯度之后更新参数
         # print statistics
         all_loss += loss.item()* BATCH_SIZE  # 计算平均los
-
+        if (i % 475 == 0 and i > 0):
+            torch.save(model.state_dict(), save_pth + str(i) + '.pth')
     if (epoch > 0 and epoch % 10 == 0):
         learning_rate = learning_rate / 10
         for param_group in optimizer.param_groups:
@@ -191,15 +190,15 @@ for epoch in (range(epochs)):
                 break
             test_inputs = Variable(torch.unsqueeze(test_inputs, dim=1).float(), requires_grad=False)
             outputs = model(test_inputs.to(device))
-            test_labels_1 = test_labels.view(32)
+            test_labels_1 = test_labels.view(1)
             # loss = loss_function(outputs, test_labels)
             evalidate_y = torch.max(outputs, dim=1)[1]  # 行最大值，返回index
             evalidate.append(int(evalidate_y[0]))
             acc += torch.eq(evalidate_y, test_labels_1.to(device)).sum().item()
 
-        val_accurate = acc / (len(test_loader)-1)/32
+        val_accurate = acc / (len(test_loader)-1)/BATCH_SIZE
         print('[%d] train_loss: %.3f  test_accuracy: %.3f' %  # 打印epoch，step，loss，accuracy
-              (epoch + 1, all_loss /(len(train_loader)-1)/32, val_accurate))
+              (epoch + 1, all_loss /(len(train_loader)-1)/BATCH_SIZE, val_accurate))
 
         print('%f s' % (time.perf_counter() - time_start))  # 打印耗时
         if val_accurate > best_acc_epoch1:
