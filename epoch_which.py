@@ -142,7 +142,7 @@ def train_change(epochn,topk,model_dict):
     # model_weight_path = "MACNN_mfcc_1.pth"
     # assert os.path.exists(model_weight_path), "file {} does not exist.".format(model_weight_path)
     # model=torch.load(model_weight_path)
-    #model.load_state_dict(torch.load("pth/epoch4/retrain_MACNN{}.pth".format(model_dict)))
+    #model.load_state_dict(torch.load("retrain_MACNN{}.pth".format(model_dict)))
     # if sp>0 and "pth/pth19/MACNN_mcffepoch{}.pth".format(epoch4):
     #
     #     model.load_state_dict(torch.load("pth/pth19/MACNN_mcffepoch{}.pth".format(epoch4)))
@@ -158,7 +158,7 @@ def train_change(epochn,topk,model_dict):
     all_loss = 0.0
     time_start = time.perf_counter()
     influence_results = {}
-    epochs=50
+    epochs=epochn
     t=0#记录哪一个epoch最优
     save_pth="pth/MACNN_mcfftop{}".format(topk)
     print("----------计算{}train----------------".format(topk))
@@ -195,7 +195,7 @@ def train_change(epochn,topk,model_dict):
 
             # if(i % 5 == 0 and i > 0):
             #     torch.save(model.state_dict(), save_pth + str(i) + '.pth')
-            if (epoch > 0 and epoch % 10 == 0):
+            if (epoch > 0 and epoch % 5 == 0):
                 learning_rate = learning_rate / 10
                 for param_group in optimizer.param_groups:
                     param_group['lr'] = learning_rate
@@ -205,23 +205,23 @@ def train_change(epochn,topk,model_dict):
         model.eval()
         acc = 0.0
 
-          # 全部不求导
-        for val_data in test_loader:
-            test_inputs, test_labels , _ = val_data
-            if len(test_labels)!=BATCH_SIZE:
-                break
-            test_inputs = Variable(torch.unsqueeze(test_inputs, dim=1).float(), requires_grad=False)
-            outputs = model(test_inputs.to(device))
-            test_labels_1 = test_labels.view(1)
-            # loss = loss_function(outputs, test_labels)
-            evalidate_y = torch.max(outputs, dim=1)[1]  # 行最大值，返回index
-            evalidate.append(int(evalidate_y[0]))
-            acc += torch.eq(evalidate_y, test_labels_1.to(device)).sum().item()
+        with torch.no_grad():  # 全部不求导
+            for val_data in test_loader:
+                test_inputs, test_labels , _ = val_data
+                if len(test_labels)!=BATCH_SIZE:
+                    break
+                test_inputs = Variable(torch.unsqueeze(test_inputs, dim=1).float(), requires_grad=False)
+                outputs = model(test_inputs.to(device))
+                test_labels_1 = test_labels.view(1)
+                # loss = loss_function(outputs, test_labels)
+                evalidate_y = torch.max(outputs, dim=1)[1]  # 行最大值，返回index
+                evalidate.append(int(evalidate_y[0]))
+                acc += torch.eq(evalidate_y, test_labels_1.to(device)).sum().item()
 
-        val_accurate = acc / (len(test_loader)-1)/BATCH_SIZE
+            val_accurate = acc / (len(test_loader)-1)/BATCH_SIZE
 
-        print('[%d] train_loss: %.3f  test_accuracy: %.3f  %f s' %  # 打印epoch，step，loss，accuracy
-              (epoch + 1, train_loss, val_accurate,(time.perf_counter() - time_start)))
+            print('[%d] train_loss: %.3f  test_accuracy: %.3f  %f s' %  # 打印epoch，step，loss，accuracy
+                  (epoch + 1, train_loss, val_accurate,(time.perf_counter() - time_start)))
 
              # 打印耗时
 
@@ -241,45 +241,22 @@ def train_change(epochn,topk,model_dict):
             average_loss=average_loss/10
         if epoch>=0:
             average_acc+=val_accurate
-
+            print("前epoch"+str(epoch+1)+'平均准确率为'+str(average_acc/(epoch+1)))
     print(str(topk)+"\n"+"平均acc"+str(average_acc/epochs)+'平均前十收敛'+str(average_loss)+"最高acc"+str(best_acc_epoch))
-# train_change(2,10,4)
-# train_change(2,10,5)
-# train_change(2,10,6)
-# train_change(2,20,4)
-# train_change(2,20,5)
-# train_change(2,20,6)
-# train_change(2,40,4)
-# train_change(2,40,5)
-# train_change(2,40,6)
-# train_change(2,50,4)
-# train_change(2,50,5)
-# train_change(2,50,6)
-# train_change(2,60,4)
-# train_change(2,60,5)
-# train_change(2,60,6)
-# train_change(2,70,4)
-# train_change(2,70,5)
-# train_change(2,70,6)
-# train_change(2,80,4)
-# train_change(2,80,5)
-# train_change(2,80,6)
-# train_change(2,90,4)
-# train_change(2,90,5)
-# train_change(2,90,6)
-train_change(2,10,475)
+
+train_change(20,90,1425)
+# train_change(2,20,1425)
+# train_change(2,40,1425)
+# train_change(2,80,1425)+
+# train_change(2,10,475)
 # train_change(2,10,950)
 # train_change(2,10,1425)
-train_change(2,20,475)
+# train_change(2,20,475)
 # train_change(2,20,950)
 # train_change(2,20,1425)
-train_change(2,40,475)
+# train_change(2,40,475)
 # train_change(2,40,950)
 # train_change(2,40,1425)
-train_change(2,50,475)
+# train_change(2,80,475)
 # train_change(2,80,950)
 # train_change(2,80,1425)
-train_change(2,60,475)
-train_change(2,70,475)
-train_change(2,80,475)
-train_change(2,90,475)
